@@ -408,31 +408,63 @@
     return enums(value, name);
   };
 
-  function tuple(types, name) {
+  function tuple(types, name, lazy, additionalType) {
 
     assert(list(Type).is(types), 'Invalid argument `types` = `%s` supplied to `tuple` combinator', types);
     var len = types.length; // cache types length
     assert(maybe(Str).is(name), 'Invalid argument `name` = `%s` supplied to `tuple` combinator', name);
+    assert(maybe(Bool).is(lazy), 'Invalid argument `lazy` = `%s` supplied to `tuple` combinator, expected bool', lazy);
+    assert(maybe(Type).is(additionalType), 'Invalid argument `additionalType` = `%s` supplied to `tuple` combinator, expected `Type`', additionalType);
+    assert(lazy || (!lazy && !additionalType), 'Invalid argument `additionalType` supplied to `tuple` combinator, expected `!!additionalType` to be false');
     name = name || format('[%s]', types.map(getTypeName).join(', '));
 
     function isTuple(x) {
-      return types.every(function (type, i) {
-        return type.is(x[i]);
-      });
+      return lazy ? 
+          x.every(function (item, key) {
+              return key > len - 1 ? additionalType.is(item) : types[key].is(item);
+          })
+      :
+          types.every(function (type, i) {
+            return type.is(x[i]);
+          })
+      ;
     }
 
     function Tuple(value, mut) {
-      assert(Arr.is(value) && value.length === len, 'Invalid argument `value` = `%s` supplied to tuple type `%s`, expected an `Arr` of length `%s`', value, name, len);
+      if (lazy) {
+        assert(
+          Arr.is(value), 
+          'Invalid argument `value` = `%s` supplied to tuple type `%s`, expected an `Arr`', value, name
+        );
+        assert(
+          value.length > len ? !!additionalType : true, 
+          'Invalid argument `value` = `%s` supplied to tuple type `%s`, expected argument `additionalType` since `value.length` > `types.length`', value, name, types
+        );
+      } else {
+        assert(
+          Arr.is(value) && value.length === len, 
+          'Invalid argument `value` = `%s` supplied to tuple type `%s`, expected an `Arr` of length `%s`', value, name, len
+        );
+      }
+
       var frozen = (mut !== true);
       // makes Tuple idempotent
       if (isTuple(value) && Object.isFrozen(value) === frozen) {
         return value;
       }
       var arr = [];
-      for (var i = 0 ; i < len ; i++) {
-        var expected = types[i];
-        var actual = value[i];
-        arr.push(create(expected, actual, mut));
+      if (lazy) {
+        for (var i = 0 ; i < value.length ; i++) {
+            var expected = i > len - 1 ? additionalType : types[i];
+            var actual = value[i];
+            arr.push(create(expected, actual, mut));
+        }
+      } else {
+        for (var i = 0 ; i < len ; i++) {
+          var expected = types[i];
+          var actual = value[i];
+          arr.push(create(expected, actual, mut));
+        }
       }
       if (frozen) {
         Object.freeze(arr);
@@ -444,13 +476,19 @@
       kind: 'tuple',
       types: types,
       length: len,
-      name: name
+      name: name,
+      lazy: !!lazy,
+      additionalType: additionalType
     };
 
     Tuple.displayName = name;
 
     Tuple.is = function (x) {
-      return Arr.is(x) && x.length === len && isTuple(x);
+      return lazy ?
+        Arr.is(x) && ((x.length > len && additionalType) || x.length <= len) && isTuple(x)
+      :
+        Arr.is(x) && x.length === len && isTuple(x)
+      ;
     };
 
     Tuple.update = function (instance, spec) {

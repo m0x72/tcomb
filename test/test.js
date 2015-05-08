@@ -1297,6 +1297,8 @@ describe('maybe', function () {
 describe('tuple', function () {
 
   var Area = tuple([Num, Num], 'Area');
+  var lTuple = tuple([Num, Num], 'lTuple', true);
+  var nTuple = tuple([Num, Num], 'nTuple', true, Num);
 
   describe('combinator', function () {
 
@@ -1310,6 +1312,20 @@ describe('tuple', function () {
         tuple([Point, Point], 1);
       }, 'Invalid argument `name` = `1` supplied to `tuple` combinator');
 
+      // lazy types
+      
+      throwsWithMessage(function () {
+        tuple([Point, Num], 'TupleType', 1);
+      }, 'Invalid argument `lazy` = `1` supplied to `tuple` combinator, expected bool');
+
+      throwsWithMessage(function () {
+        tuple([Point, Num], 'TupleType', true, 1);
+      }, 'Invalid argument `additionalType` = `1` supplied to `tuple` combinator, expected `Type`');
+
+      throwsWithMessage(function () {
+        tuple([Point, Num], null, false, Str);
+      }, 'Invalid argument `additionalType` supplied to `tuple` combinator, expected `!!additionalType` to be false');
+
     });
 
   });
@@ -1318,6 +1334,8 @@ describe('tuple', function () {
 
     var S = struct({}, 'S');
     var T = tuple([S, S], 'T');
+    var LT = tuple([S, Num], 'LT', true);
+    var LTA = tuple([S, Num], 'LTA', true, Str);
 
     it('should coerce values', function () {
       var t = T([{}, {}]);
@@ -1335,6 +1353,29 @@ describe('tuple', function () {
         T([1, 1]);
       }, 'Invalid argument `value` = `1` supplied to struct type `S`');
 
+      // lazy types
+      
+      throwsWithMessage(function () {
+        LT([1, 2]);
+      }, 'Invalid argument `value` = `1` supplied to struct type `S`');
+
+      throwsWithMessage(function () {
+        LT([1]);
+      }, 'Invalid argument `value` = `1` supplied to struct type `S`');
+
+      throwsWithMessage(function () {
+        LT([{}, '2']);
+      }, 'Invalid argument `value` = `2` supplied to irreducible type `Num`');
+
+      throwsWithMessage(function () {
+        LTA([{}, '2']);
+      }, 'Invalid argument `value` = `2` supplied to irreducible type `Num`');
+
+      throwsWithMessage(function () {
+        LTA([{}, 2, 3]);
+      }, 'Invalid argument `value` = `3` supplied to irreducible type `Str`');
+
+
     });
 
     it('should be idempotent', function () {
@@ -1346,23 +1387,62 @@ describe('tuple', function () {
       eq(p2 === p1, true);
     });
 
+    it('should have a correct meta property', function () {
+      eq(T.meta.kind, 'tuple');
+      eq(T.meta.types, [S, S]);
+      eq(T.meta.length, 2);
+      eq(T.meta.name, 'T');
+      eq(T.meta.lazy, false);
+      eq(T.meta.addtionalType, undefined);
+
+      eq(LT.meta.kind, 'tuple');
+      eq(LT.meta.types, [S, Num]);
+      eq(LT.meta.length, 2);
+      eq(LT.meta.name, 'LT');
+      eq(LT.meta.lazy, true);
+      eq(LT.meta.additionalType, undefined);
+
+      eq(LTA.meta.kind, 'tuple');
+      eq(LTA.meta.types, [S, Num]);
+      eq(LTA.meta.length, 2);
+      eq(LTA.meta.name, 'LTA');
+      eq(LTA.meta.lazy, true);
+      eq(LTA.meta.additionalType, Str);
+
+
+    }); 
+
   });
 
   describe('#is(x)', function () {
 
     it('should return true when x is an instance of the tuple', function () {
       ok(Area.is([1, 2]));
+      // lazy types
+      ok(lTuple.is([1]));
+      ok(lTuple.is([1, 2]));
+      ok(nTuple.is([1]));
+      ok(nTuple.is([1, 2]));
+      ok(nTuple.is([1, 2, 3, 4, 5, 6]));
     });
 
     it('should return false when x is not an instance of the tuple', function () {
       ko(Area.is([1]));
       ko(Area.is([1, 2, 3]));
       ko(Area.is([1, 'a']));
+      // lazy types
+      ko(lTuple.is(['a']));
+      ko(lTuple.is([1, 2, 3]));
+      ko(nTuple.is([1, 'a', 2]));
+      ko(nTuple.is([1, 2, 3, 'a']));
     });
 
     it('should not depend on `this`', function () {
       ok([[1, 2]].every(Area.is));
+      ok([[1]].every(lTuple.is));
+      ok([[1, 2, 3, 4]].every(nTuple.is));
     });
+
 
   });
 
@@ -1376,6 +1456,14 @@ describe('tuple', function () {
       assert(Type.is(newInstance));
       assert(instance[0] === 'a');
       assert(newInstance[0] === 'b');
+    });
+
+    var lType = tuple([Str, Num], null, true);
+
+    it('should respect lazy tuples', function () {
+      var newInstance = lType.update(instance, {$splice: [[1,1]]});
+      assert(lType.is(newInstance));
+      assert(instance[0] === 'a');
     });
 
   });
